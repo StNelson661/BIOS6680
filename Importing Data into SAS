@@ -1,0 +1,167 @@
+                *************	P	R	O	G	R	A	M		H	E	A	D	E	R	*****************
+*****************************************************************************************
+*																					                                            	*
+*	PROGRAM:	Prg 1 - Import Data Into SAS - Hypertension Study.sas                       *
+*	PURPOSE:	Create SAS data sets from all source data files                             *
+*	AUTHOR:		Stephen Nelson									                                						*
+*	CREATED:	2019-09-08										                                  						*
+*	                                                                                      *
+*	COURSE:		BIOS 6680 - Data Management Using SAS                                       *
+*	DATA USED:				                                                                    *
+*	SOFTWARE:	SAS (r) Proprietary Software 9.4 (TS1M5)	                    							*
+*****************************************************************************************
+***********************************************************************************; RUN;
+
+%LET CourseRoot = /folders/myfolders/BIOS 6680- SAS;
+LIBNAME HyperSrc  "&CourseRoot/Hypertension Study/Data/1_Source";
+LIBNAME HyperImp "&CourseRoot/Hypertension Study/Data/2_Import";
+
+
+*	Importing SAS Data    *;
+
+Data	HypImpt.Ndi;
+	SET HypSrc.Ndi;
+	RUN;
+
+
+*	Importing In-stream Data   *;
+
+LIBNAME  HypImpt "&CourseRoot/Hypertension Study/Data/2_Import";
+DATA        HypImpt.States;
+	INFILE DATALINES           DELIMITER = ',';
+	INPUT		StateNum		
+				StateCd			:$2.
+				StateNm			:$20.;
+DATALINES;
+15,IA,Iowa,
+24,MS,Mississippi,
+44,UT,Utah,
+;
+
+
+
+*	Importing Microsoft Excel Data   *;
+
+*	Importing 'Utah Vitals.xlsx'   *;
+
+PROC IMPORT
+		DATAFILE= "&CourseRoot/Hypertension Study/Data/1_Source/Utah Vitals.xlsx"
+		OUT			= HypImpt.Utah_Vitals_2010
+		DBMS		= XLSX
+		REPLACE		;
+	SHEET	= 'Vitals10';
+	RUN;
+
+PROC IMPORT
+		DATAFILE= "&CourseRoot/Hypertension Study/Data/1_Source/Utah Vitals.xlsx"
+		OUT			= HypImpt.Utah_Vitals_2011
+		DBMS		= XLSX
+		REPLACE		;
+	SHEET	= 'Vitals11';
+	RUN;
+
+PROC IMPORT
+		DATAFILE= "&CourseRoot/Hypertension Study/Data/1_Source/Utah Vitals.xlsx"
+		OUT			= Hyperimp.Utah_Vitals_2012
+		DBMS		= XLSX
+		REPLACE		;
+	SHEET	= 'Vitals12';
+	RUN;
+
+PROC IMPORT
+		DATAFILE= "&CourseRoot/Hypertension Study/Data/1_Source/Utah Vitals.xlsx"
+		OUT			= HypImpt.Utah_Vitals_2013
+		DBMS		= XLSX
+		REPLACE		;
+	SHEET	= 'Vitals13';
+	RUN;
+
+PROC IMPORT
+		DATAFILE= "&CourseRoot/Hypertension Study/Data/1_Source/Utah Vitals.xlsx"
+		OUT			= HypImpt.Utah_Vitals_2014
+		DBMS		= XLSX
+		REPLACE		;
+	SHEET	= 'Vitals14';
+	RUN;
+
+
+*	Importing 'VIT_IA.xls'   *;
+
+
+PROC IMPORT
+		DATAFILE= "&CourseRoot/Hypertension Study/Data/1_Source/VIT_IA.xls"
+		OUT			= HypImpt.VIT_IA
+		DBMS		= XLS
+		REPLACE		;
+	RUN;
+
+
+
+*	Importing Column-Aligned Raw Data   *;
+DATA	HypImpt.UT_Records;
+	INFILE "&CourseRoot/Hypertension Study/Data/1_Source/UT_Records.dat";
+	INPUT	ID					1-10
+			Inits			$	11-16
+			CitySt			$	19-42
+			ZipCode			$	43-47
+			GenderCode		$	50
+			EthnicityCode	$	51
+			RaceCode		$	52
+			BirthYear			53-59
+			BirthMonth			60-61
+			BirthDay			62-63;
+	RUN;
+
+
+
+*	Importing Delimited Raw Data   *;
+
+DATA	HYPIMPT.IowaResidents;
+	INFILE	"&CourseRoot/Hypertension Study/Data/1_Source/IowaResidents.csv"	DELIMITER = ','	MISSOVER	DSD;
+	INPUT	SSN			:$11.
+			Initials	:$4.
+			City		:$20.
+			State		:$4.
+			ZipCd		:$5.
+			Sex			:$6.
+			Ethnicity	:$12.
+			Race		:$5.
+			BirthDt		:MMDDYY10.	;
+	FORMAT	BIRTHDT		MMDDYY10.;
+	RUN;
+PROC SORT DATA= HypImpt.iowaresidents;
+	BY SSN;
+	RUN;
+
+*	Importing Raw Data In Uncommon Structures   *;
+
+DATA	HypImpt.Mississippi_VS;
+	INFILE	"&CourseRoot/Hypertension Study/Data/1_Source/Mississippi VS.dat"	DELIMITER = ':'; 
+	INPUT	SSN			:$11.
+			VisitDate	:MMDDYY10.
+			Height
+			Weight
+			SBP
+			DBP			@@;
+	FORMAT	VisitDate	MMDDYY10.;
+	RUN;
+
+DATA	HypImpt.MS_Citizens;
+	INFILE	"&CourseRoot/Hypertension Study/Data/1_Source/MS Citizens.txt"	DELIMITER = '|'; 
+	INPUT	SSN			:$11.
+			FirstInit	:$2.
+			MiddleInit	:$2.
+			LastInit	:$2.
+			CityState	:$35.
+			ZipCd		:$5.
+			Gender		:$6.
+			Eth			:$22.
+			Racial		:$16.
+			DOB			:$9.;
+	RUN;
+
+
+
+;	*';	*";	*/;	QUIT;	RUN;
+*	End of Program   *; RUN;
+
