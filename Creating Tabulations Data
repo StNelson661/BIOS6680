@@ -1,0 +1,440 @@
+*************	P	R	O	G	R	A	M		H	E	A	D	E	R	*****************
+*****************************************************************************************
+*									                                            													*
+*	PROGRAM:	Prg 2 - Create Tabulations Data - Hypertension Study.sas                    *
+*	PURPOSE:	Create Tabulations data sets from the source data                           *
+*	AUTHOR:		Stephen Nelson		                                  												*
+*	CREATED:	2017-09-25						                                  										*
+*	                                                                                      *
+*	COURSE:		BIOS 6680 - Data Management Using SAS                                       *
+*	DATA USED:	Source.Scans                                                              *
+*	SOFTWARE:	SAS (r) Proprietary Software 9.4 (TS1M4)							                     	*
+*	                                                                                      *
+*****************************************************************************************
+***********************************************************************************; RUN;
+
+%LET CourseRoot = /folders/myfolders/BIOS 6680- SAS;;
+LIBNAME HypImpt "&CourseRoot/Hypertension Study/Data/2_Import";
+LIBNAME Hyptabs "&CourseRoot/Hypertension Study/Data/3_Tabulations";
+
+
+
+*	Setting System Options   *;
+OPTIONS	FMTSEARCH = (HypTabs.HypFormats WORK LIBRARY)
+		NOFMTERR;
+
+
+
+
+*	DATA SET:  States   *;
+DATA	HypTabs.States	(	LABEL = 'Study States'	);
+	SET	HypImpt.States;
+
+	LABEL	StateNum		= 'State Number'			
+			StateCd			= 'State Code'
+			StateNm			= 'State Name';
+	RUN;
+
+PROC SORT DATA = HypTabs.States;
+	BY StateNum;
+	RUN;
+
+PROC CONTENTS DATA = HypTabs.states;
+	LABEL;
+	RUN;
+
+*	DATA SET:  Contact   *;
+
+*	Creating data for Iowa   *;
+DATA	WORK.Contact_IA;
+	LENGTH 	SSN		$11.
+			Inits	$6.
+			City 	$20.
+			StateCd	$2.
+			ZipCd	$5.;
+	SET	HypImpt.IowaResidents (	RENAME = 	(Initials	= 	Inits	)); 
+	
+	LABEL	SSN			=	'Social Security Number'
+			Inits		=	'Subject Initials'
+			City		=	'City'
+			StateCd		=	'State Code'
+			ZipCd		=	'Zip Code';
+			
+	City	= PROPCASE(City);
+	StateCd = TRANWRD(State, 'IOWA', 'IA');
+	Inits  = cats(substr(Inits,3,2),substr(Inits,1,1));
+	
+	
+	DROP State Sex Ethnicity Race BirthDt;
+*	FORMAT 	StateCd $StateCd.;
+PROC SORT DATA=work.contact_ia;
+	BY SSN;
+	RUN;
+
+*	Creating data for Mississippi   *;
+DATA	WORK.Contact_MS;
+	LENGTH 	SSN		$11.
+			Inits	$6.
+			City 	$20.
+			StateCd	$2.
+			ZipCd	$5.;
+
+	SET	HypImpt.MS_Citizens;
+
+	Inits	= CATS(Firstinit, Middleinit, Lastinit);
+	State	= SCAN(CityState, -1);
+	City	= PROPCASE(SCAN(CityState, 1, ','));
+	
+	StateCd = TRANWRD(State, 'Mississippi', 'MS');
+	Inits  = cats(substr(Inits,1,1),substr(Inits,3,1), Substr(Inits,5,1));
+
+	DROP State DOB FirstInit MiddleInit LastInit CityState Gender Eth Racial;
+PROC SORT DATA=work.contact_MS;
+	BY SSN;
+	RUN;
+
+	
+	RUN;
+
+*	Creating data for Utah   *;
+DATA	WORK.Contact_UT;
+	LENGTH 	SSN		$11.
+			Inits	$6.
+			City 	$20.
+			StateCd	$2.
+			ZipCd	$5.;
+
+	SET	HypImpt.UT_Records (	RENAME	= (	ZipCode = ZipCd	)
+						);
+
+	City	= PROPCASE(SCAN(CitySt, 1, ','));
+	StateCd = SCAN(CitySt, -1);
+*	SSN		= PUT(ID, 12.);
+
+*	SSN		= cat( substr(SSN, 1, 4), '-', substr(SSN, 4, 3), '-', substr(SSN, 7, 4) );
+	SSN		= PUT(ID, SSN.);
+	Inits  = cats(substr(Inits,1,1),substr(Inits,3,1), Substr(Inits,5,1));
+
+
+	DROP ID CitySt GenderCode EthnicityCode RaceCode BirthYear BirthDay BirthMonth;
+PROC SORT DATA=work.contact_ut;
+	BY SSN;
+	RUN;
+
+	*	Creating Combined Data Set   *;
+DATA	HypTabs.Contact (LABEL = 'Contact Information');
+	SET	WORK.Contact_IA		(RENAME= (Inits = Inits2))
+		WORK.Contact_MS 	(RENAME= (Inits = Inits2))
+		WORK.Contact_UT 	(RENAME= (Inits = Inits2));
+	LENGTH Inits $3;
+	Inits = COMPRESS(Inits2);
+*	INITS = STRIP(COMPRESS(inits_source)) THIS IS NOT WHAT I WANT;
+	ATTRIB	SSN				LABEL = 'Social Security Number'							
+			Inits			LABEL = 'Subject Initials'				
+			City			LABEL = 'City'								
+			StateCd			LABEL = 'State Code'						FORMAT = $StateCd.
+			ZipCd			LABEL = 'Zip Code';
+			
+			
+	DROP Inits2;
+	
+	
+	PROC FORMAT;
+	VALUE $StateCd
+		'IA' = 'Iowa'
+		'UT' = 'Utah'
+		'MS' = 'Mississippi';
+	
+	RUN;
+
+
+PROC SORT DATA = HypTabs.Contact;
+	BY	SSN;
+	RUN;
+
+PROC CONTENTS DATA= HypTabs.Contact;
+RUN;
+
+
+
+*	DATA SET:  Demog   *;
+
+*	Creating data for Iowa   *;
+DATA	WORK.Demog_IA;
+	SET	HypImpt.IowaResidents;
+	
+	IF SEX ='MALE' THEN GenderCd = 1;
+		ELSE  GenderCd = 2;
+
+	IF	ETHNICITY	= 'HISPANIC'	THEN	EthCd	= 'H';	
+		ELSE								EthCd	= 'N';
+
+	IF	RACE			= 'WHITE'				THEN	RaceCd	= 'W';	
+		ELSE IF	RACE	= 'AFRICAN AMERICAN'	THEN	RaceCd	= 'B';
+		ELSE IF	RACE	= 'ASIAN'				THEN	RaceCd	= 'A';
+		ELSE											RaceCd	= 'O';
+
+	IF	EthCd			= 'H'			THEN	EthRaceCd	= 'HIS';	 
+		ELSE IF	RaceCd	= 'B'			THEN	EthRaceCd	= 'NHB';
+		ELSE IF	RaceCd	= 'W'			THEN	EthRaceCd	= 'NHW';
+		ELSE IF RaceCd	= 'A'			THEN	EthRaceCd	= 'NHA';
+		ELSE									EthRaceCd	= 'NHO';
+
+
+	DROP Initials City State ZipCd Sex Race Ethnicity;
+	RUN;
+
+*	Creating data for Mississippi   *;
+DATA	WORK.Demog_MS;
+	SET	HypImpt.MS_Citizens;
+
+	IF Gender ='Male' THEN GenderCd = 1;
+		ELSE  GenderCd = 2;
+
+	IF	ETH	= 'Hispanic or Latino'	THEN	EthCd	= 'H';	
+		ELSE								EthCd	= 'N';
+
+	IF	RACIAL			= 'Caucasian'				THEN	RaceCd	= 'W';	
+		ELSE IF	RACIAL	= 'African American'	THEN	RaceCd	= 'B';
+		ELSE											RaceCd	= 'O';
+
+	IF	EthCd			= 'H'			THEN	EthRaceCd	= 'HIS';	 
+		ELSE IF	RaceCd	= 'B'			THEN	EthRaceCd	= 'NHB';
+		ELSE IF	RaceCd	= 'W'			THEN	EthRaceCd	= 'NHW';
+		ELSE IF RaceCd	= 'A'			THEN	EthRaceCd	= 'NHA';
+		ELSE									EthRaceCd	= 'NHO';
+
+	BirthDt	= INPUT(DOB, DATE10.);
+	
+	DROP FirstInit MiddleInit LastInit CityState ZipCd Gender Eth Racial DOB;
+	
+	FORMAT BirthDt MMDDYY10.;
+	
+	RUN;
+
+*	Creating data for Utah   *;
+DATA	WORK.Demog_UT;
+	SET	HypImpt.UT_Records (	RENAME	=	(	EthnicityCode	=	EthCd
+												RaceCode		=	RaceCd));
+
+
+	SSN		= PUT(ID, SSN.);
+
+	IF GenderCode ='M' THEN GenderCd = 1;
+		ELSE  GenderCd = 2;
+
+	IF	EthCd			= 'H'			THEN	EthRaceCd	= 'HIS';	 
+		ELSE IF	RaceCd	= 'B'			THEN	EthRaceCd	= 'NHB';
+		ELSE IF	RaceCd	= 'W'			THEN	EthRaceCd	= 'NHW';
+		ELSE IF RaceCd	= 'A'			THEN	EthRaceCd	= 'NHA';
+		ELSE									EthRaceCd	= 'NHO';
+
+	BirthDt = INPUT(CATX('/', BIRTHMONTH, BIRTHDAY, BIRTHYEAR), MMDDYY10.); 
+	
+	DROP  ID Inits CitySt ZipCode BirthMonth BirthDay BirthYear GenderCode ;
+	
+	FORMAT BirthDt MMDDYY10.;
+	
+	RUN;
+
+*	Creating Combined Data Set   *;
+DATA	HypTabs.Demog (		LABEL =	'Demographics');
+	ATTRIB	SSN				LABEL = 'Social Security Number'							
+			GenderCd		LABEL = 'Gender Code'					FORMAT = GenderCd.	
+			EthCd			LABEL = 'Ethnicity Code'				FORMAT = $EthCd.
+			RaceCd			LABEL = 'Race Code'						FORMAT = $RaceCd.
+			EthRaceCd		LABEL = 'Ethnicity/Race Code'			FORMAT = $EthRaceCd.
+			BirthDt			LABEL = 'Birth Date'					FORMAT = MMDDYY10.;
+
+	SET	WORK.Demog_IA
+		WORK.Demog_MS
+		WORK.Demog_UT;
+PROC FORMAT;
+	VALUE	GenderCd
+				1	= 	'Male'
+				2	=	'Female';
+	VALUE	$EthCd
+				'H'	=	'Hispanic'
+				'N' =	'Non-Hispanic';
+	VALUE 	$RaceCd
+				'W' = 	'White'
+				'B' =	'Black'
+				'A' =	'Asian'
+				'O' = 	'Other';
+	VALUE	$EthRaceCd
+				'HIS'=	'Hispanic'
+				'NHA'=	'NH Asian'
+				'NHB'=	'NH Black'
+				'NHO'=	'NH Other Race'
+				'NHW'=	'NH White';
+
+	RUN;
+
+
+PROC SORT DATA = HypTabs.Demog;
+	BY	SSN;
+	RUN;
+
+PROC CONTENTS DATA= HypTabs.Demog;
+RUN;
+
+
+
+
+
+*	DATA SET:  Vitals   *;
+
+*	Creating data for Iowa   *;
+DATA	WORK.Vitals_IA;
+	SET	HypImpt.Vit_IA	(RENAME= (SSN = SSN2));
+	LENGTH SSN $11;
+	SSN = COMPRESS(SSN2);
+
+	HtIn = HtCm / 2.54;
+	WtLb = WtKg * 2.2;
+	
+	DROP  WtKg HtCm SSN2;
+
+	RUN;
+
+
+
+
+*	Creating data for Mississippi   *;
+DATA	WORK.Vitals_MS;
+	SET	HypImpt.Mississippi_VS	(	RENAME	= (	VisitDate	= VisitDt
+												Height		= HtIn
+												Weight		= WtLb)
+						);
+
+FORMAT VisitDt DATE9.;
+	RUN;
+
+
+
+
+*	Creating data for Utah   *;
+DATA	WORK.Vitals_UT;
+	SET	HypImpt.UTAH_VITALS_2010	(	RENAME	= (	ApptDate	= VisitDt
+										))
+		HypImpt.UTAH_VITALS_2011	(	RENAME	= (	ApptDate	= VisitDt
+										))
+		HypImpt.Utah_vitals_2012	(	RENAME	= (	ApptDate	= VisitDt
+										))
+		HypImpt.Utah_vitals_2013	(	RENAME	= (	ApptDate	= VisitDt
+										))
+		HypImpt.Utah_vitals_2014	(	RENAME	= (	ApptDate	= VisitDt
+										));
+/*	IF			Measure = 'Height (In)'		THEN	HtIn 	= Value;
+		ELSE IF Measure = 'Weight (Lb)'		THEN	WtLb	= Value;
+		ELSE IF Measure = 'Systolic BP'		THEN	SBP		= Value;
+		ELSE IF	Measure = 'Diastolic BP'	THEN	DBP		= Value; */
+
+PROC TRANSPOSE data=WORK.Vitals_UT 
+OUT=WORK.VITALS_UT;
+BY VisitDt SSN;
+ID Measure;
+
+RUN;
+
+DATA Work.VITALS_UT		(	RENAME	= (	Height__IN_		= HtIn
+										Weight__Lb_		= WtLb
+										Systolic_BP		= SBP
+										Diastolic_BP	= DBP
+										));
+SET WORK.Vitals_UT 	(RENAME	=	(SSN = SSN2));
+	LENGTH SSN $11;
+	SSN = COMPRESS(SSN2);
+
+
+	DROP _NAME_ _LABEL_ SSN2 ;
+	RUN;
+	
+DATA Work.VITALS_UT;
+SET WORK.Vitals_UT;
+		SSN	= catx('-', substr(SSN,1,3),substr(SSN,4,2), substr(SSN,6));
+	RUN;
+		
+
+
+PROC CONTENTS DATA= Work.VITALS_UT;
+RUN;
+
+
+/* Sort data set */
+
+/* Re-structure data set */
+
+*	Creating Combined Data Set   *;
+DATA	HypTabs.Vitals (LABEL = Vital Signs);
+	ATTRIB	SSN				LABEL = 'Social Security Number'							
+			VisitDt			LABEL = 'Visit Date'						FORMAT = DATE9.
+			HtIn			LABEL = 'Height (In)'				
+			WtLb			LABEL = 'Weight (Lb)'				
+			SBP				LABEL = 'Systolic BP (mmHg)'		
+			DBP				LABEL = 'Diastolic BP (mmHg)'			;
+
+	SET	WORK.Vitals_IA
+		WORK.Vitals_MS
+		WORK.Vitals_UT;
+
+	/* Enter statements */
+
+	RUN;
+
+/* Sort final data set */
+PROC SORT DATA = HypTabs.Vitals;
+	BY	SSN VisitDt;
+	RUN;
+
+PROC CONTENTS DATA= HypTabs.Vitals;
+RUN;
+
+
+
+
+*	DATA SET:  NDI   *;
+DATA HypTabs.NDI (LABEL = Death Data);
+	ATTRIB	SSN				LABEL = 'Social Security Number'							
+			ICD10			LABEL = 'ICD 10 Code'				
+			CODCd			LABEL = 'Cause of Death Code'				FORMAT = CODCd.
+			HypRelDeathInd	LABEL = 'Hypertension-Related Death'		FORMAT = IndVbl.
+			DeathDt			LABEL = 'Death Date'						FORMAT = YYMMDDD10.;
+
+	SET	HypImpt.NDI;
+
+	IF  	SUBSTR(ICD10, 1, 3)		= 	'I25' 		THEN CODCd 	= 	1;
+	ELSE IF	SUBSTR(ICD10, 1, 3)		= 	'I50'		THEN CODCd	=	2;
+	ELSE IF	SUBSTR(ICD10, 1, 3)		=	'I63'		THEN CODCd	=	3;
+	ELSE  												 CODCd	=	4;
+	
+	IF CODCd IN(1, 2, 3) THEN HypRelDeathInd = 1;
+	ELSE HypRelDeathInd = 0;
+	
+PROC FORMAT;
+	VALUE CODCd
+		1 = 'I25.XX'
+		2 =	'I50.XX'
+		3 = 'I63.XX'
+		4 = 'Other COD';
+		
+	VALUE IndVbl
+		0 = 'No'
+		1 = 'Yes';
+
+	RUN;
+
+PROC SORT DATA = HypTabs.NDI;
+	BY	SSN;
+	RUN;
+
+PROC CONTENTS DATA= HypTabs.NDI;
+RUN;
+
+
+
+
+
+;	*';	*";	*/;	QUIT;	RUN;
+*	End of Program   *; RUN;
+
