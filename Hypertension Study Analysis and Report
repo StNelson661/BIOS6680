@@ -1,0 +1,246 @@
+*************	P	R	O	G	R	A	M		H	E	A	D	E	R	*****************
+*****************************************************************************************
+*																						*
+*	PROGRAM:	Prg 3 - Analysis and Report - Hypertension Study.sas                    *
+*	PURPOSE:	Create 'HypAnalysis2' data set, perform analyses, and create report     *
+*	AUTHOR:		Stephen Nelson															*
+*	CREATED:	2019-11-14																*
+*	                                                                                    *
+*	COURSE:		BIOS 6680 - Data Management Using SAS                                   *
+*	DATA USED:	Tabs. Demog, Contact, Vitals, NDI                                       *
+*	SOFTWARE:	SAS (r) Proprietary Software 9.4 (TS1M4)								*
+*	MODIFIED:	DATE		BY	REASON													*
+*				----------	---	-------------------------------------------------------	*
+*				20YY-MM-DD	PJB															*
+*	                                                                                    *
+*****************************************************************************************
+***********************************************************************************; RUN;
+
+
+*   Instructions:
+    1)  Change the path in the %LET statement to the location of the BIOS 6680 course root folder
+    2)  Submit the %LET and LIBNAME statements below   *;
+*	Note:  Forward slashes are used for portability across operating environments   *;
+
+%LET	CourseRoot = C:/Dropbox/2 - Education/7 - Teaching/1 - SAS/BIOS 6680 - Data Management Using SAS/4 - Projects/Programming Project;
+LIBNAME HypTabs	"&CourseRoot/Hypertension Study/Data/3_Tabulations";
+LIBNAME HypAnl	"&CourseRoot/Hypertension Study/Data/4_Analysis";
+LIBNAME HypRslt	"&CourseRoot/Hypertension Study/Data/5_Results";
+OPTIONS	FMTSEARCH = (HypTabs.HypFormats WORK LIBRARY)
+		NOFMTERR
+		NODATE;
+
+
+
+
+*	Step 1: Create 'HypAnl.HypAnalysis2' Data Set   *; RUN;
+*			Merging data was covered in Lecture 4.4   *;
+
+*	Create a temporary data set containing the most visit for each person   *;
+DATA WORK.LastVitals;
+	SET	HypTabs.Vitals;
+	BY	SSN;
+	IF LAST.SSN = 1;
+	RUN;
+
+*	Merge 4 data sets together to create the 'HypAnalysis2' Data Set   *;
+DATA HypAnl.HypAnalysis2;
+
+	RETAIN	SSN StateCd
+			GenderCd EthCd RaceCd AgeAtVisit
+			SBP DBP WtLb
+			HypRelDeathInd;
+
+	MERGE	HypTabs.Demog	(IN = InDemog		DROP = EthRaceCd)
+			HypTabs.Contact	(IN = InContact		KEEP = SSN StateCd)
+			WORK.LastVitals	(IN = InLastVitals	DROP = HtIn)
+			HypTabs.NDI		(IN = InNDI			DROP = DeathDt ICD10 CODCd);
+	BY	SSN;
+	IF	InDemog		= 1	AND
+		InContact	= 1	AND
+		InLastVitals= 1	;
+
+	AgeAtVisit = YRDIF(BirthDt, VisitDt, 'AGE');
+	FORMAT	AgeAtVisit 2.;
+
+	IF InNDI = 0 THEN HypRelDeathInd = 0;
+
+	DROP BirthDt VisitDt;
+
+	RUN;
+
+
+
+
+*	Step 2: Perform a Chi-Square Test and Save the Results   *; RUN;
+*			Material from Lecture 5.1   *;
+
+*	Use the 'HypAnl.HypAnalysis2' data set from Step 1 (above) to:
+
+	Create a cross-tabulation where you specify:
+		'HypRelDeathInd' as the row variable, and
+		'StateCd' as the column variable
+
+	'HypRslt.StatePercents' is where to save the cross-tabulation frequencies
+	'HypRslt.ChiSqResults'  is where to save the chi-square test results   *;
+
+ODS OUTPUT	CrossTabFreqs = HypRslt.StatePercents	(	KEEP = StateCd HypRelDeathInd Frequency ColPercent
+														WHERE	= (	HypRelDeathInd = 1	AND
+																	MISSING(StateCd) = 0	)	)
+			ChiSq = HypRslt.ChiSqResults	(	DROP = Table
+												WHERE	= (	Statistic = 'Chi-Square')	);
+PROC FREQ DATA = HypAnl.HypAnalysis2;
+	TABLES HypRelDeathInd * StateCd / NOROW NOPERCENT CHISQ;
+	RUN;
+
+
+
+
+*	Step 3: Create a Vertical Bar Chart   *; RUN;
+*			Material from Lecture 5.3   *;
+
+*	Use the 'HypRslt.StatePercents' data set from Step 2 (above) to:
+
+	Create a vertical bar chart of the column percents   *;
+PROC SGPLOT DATA = HypRslt.StatePercents;
+
+	REFLINE	1.8
+		/	AXIS		= Y
+			LINEATTRS	= (	COLOR		= INDIGO
+							PATTERN		= SHORTDASH	)
+			LABEL		= 'National Average = 1.8'
+			LABELLOC	= INSIDE
+			LABELPOS	= MAX;
+
+	VBAR	StateCd	/	RESPONSE	= ColPercent
+						DATALABEL
+						FILLATTRS	= (COLOR = LIGHTSALMON);
+
+	XAXIS	LABELATTRS	= (	WEIGHT	= BOLD	);
+
+	YAXIS	VALUES		= (	0 TO 4 BY 1	)
+			OFFSETMIN = 0
+			LABEL		= 'Percent'
+			GRID
+			LABELATTRS	= (	WEIGHT	= BOLD	);
+
+	RUN;
+
+
+
+
+*	Step 4: Write a Macro named 'RunANOVA' to Perform an ANOVA and Save the Results   *; RUN;
+*			Material from Lecture 5.4   *;
+
+*	Step 4.1: Write PROC ANOVA code which will perform a single ANOVA
+				The ANOVA should test whether the means of a continuous variable
+					are equal across each of the 3 states (Iowa, Mississippi, and Utah)
+				You could write this first ANOVA to test equality of 'AgeAtVisit'
+				Save the output results containing the model ANOVA section of output into
+					a data set (it should have only 1 observation)   *;
+ODS OUTPUT	ModelANOVA	= WORK.TestANOVAResults	(	KEEP = Dependent FValue ProbF	);
+PROC ANOVA DATA	= HypAnl.HypAnalysis2;
+	CLASS	StateCd;
+	MODEL	AgeAtVisit = StateCd;
+	RUN;
+	QUIT;
+
+
+*	Step 4.2: Put the code from Step 4.1 inside a macro definition which specifies 2
+				macro variables, named 'Number' and 'Variable'
+
+	Step 4.3: Modify the code to incorporate the 2 macro variables
+				'Number' should be used to create unique data sets containing the results
+					named 'ANOVAResults1', 'ANOVAResults2', 'ANOVAResults3', and 'ANOVAResults4'
+				'Variable' should specify the variable to be analyzed in the MODEL statement   *;
+
+%MACRO RunANOVA (Number = , Variable = );
+
+ODS OUTPUT	ModelANOVA	= WORK.ANOVAResults&Number	(	KEEP = Dependent FValue ProbF	);
+PROC ANOVA DATA	= HypAnl.HypAnalysis2;
+	CLASS	StateCd;
+	MODEL	&Variable = StateCd;
+	RUN;
+	QUIT;
+
+%MEND RunANOVA;
+
+*	Run the 'RunANOVA' macro 4 times!
+		It should be run for 1) AgeAtVisit, 2) SBP, 3) DBP, and 4) WtLb   *;
+%RunANOVA (Number = 1, Variable = AgeAtVisit)
+%RunANOVA (Number = 2, Variable = SBP)
+%RunANOVA (Number = 3, Variable = DBP)
+%RunANOVA (Number = 4, Variable = WtLb)
+
+;*	Combine the 4 saved data sets into a single data set named 'HypRslt.ANOVAResults'   *;
+DATA HypRslt.ANOVAResults;
+	SET	WORK.ANOVA:;
+	LABEL	Dependent	= 'Variable Name'
+			FValue		= 'F Statistic'
+			ProbF		= 'P-Value';
+	RUN;
+
+
+
+
+*	Step 5: Create a Report   *; RUN;
+*			Material from Lecture 5.2   *;
+
+ODS PDF FILE = "&CourseRoot/Hypertension Study/Documents/Prg 3 - Analysis Report - Hypertension Study.pdf";
+
+
+*	Use PROC REPORT to display the results of the Chi-Square test (from 'HypRslt.ChiSqResults')   *;
+TITLE1 "Chi-Square Test of Independence Results";
+FOOTNOTE1 "Created by [enter-your-name-here]";
+PROC REPORT	DATA = HypRslt.ChiSqResults;
+	COLUMN	Statistic
+			("Statistical Results" DF Value Prob);
+	DEFINE	Statistic	/'Test';
+	DEFINE	Value		/ FORMAT = 5.2;
+	DEFINE	Prob		/ FORMAT = 5.2 'P-Value';
+	RUN;
+TITLE;
+
+
+*	Copy-and-paste the code from Step 3 to include the figure in the report   *;
+TITLE1 "Hypertension-Related Death Rates by State";
+PROC SGPLOT DATA = HypRslt.StatePercents;
+
+	REFLINE	1.8
+		/	AXIS		= Y
+			LINEATTRS	= (	COLOR		= INDIGO
+							PATTERN		= SHORTDASH	)
+			LABEL		= 'National Average = 1.8'
+			LABELLOC	= INSIDE
+			LABELPOS	= MAX;
+
+	VBAR	StateCd	/	RESPONSE	= ColPercent
+						DATALABEL
+						FILLATTRS	= (COLOR = LIGHTSALMON);
+
+	XAXIS	LABELATTRS	= (	WEIGHT	= BOLD	);
+
+	YAXIS	VALUES		= (	0 TO 4 BY 1	)	OFFSETMIN = 0
+			LABEL		= 'Percent'
+			GRID
+			LABELATTRS	= (	WEIGHT	= BOLD	);
+
+	RUN;
+
+
+*	Use PROC PRINT to include the 4 ANOVA results (from 'HypRslt.ANOVAResults')   *;
+TITLE1 "Analysis of Variance Results";
+PROC PRINT DATA = HypRslt.ANOVAResults	LABEL	OBS = 'Variable';
+	RUN;
+TITLE;
+FOOTNOTE;
+
+
+ODS PDF CLOSE;
+
+
+
+
+;	*';	*";	*/;	QUIT;	RUN;
+*	End of Program   *; RUN;
+
